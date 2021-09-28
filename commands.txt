@@ -1,0 +1,500 @@
+yy0513zqd@cloudshell:~ (deft-weaver-320113)$ kubectl apply -f create_deployment.yaml
+deployment.apps/alpaca-prod created
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ kubectl get deployments
+NAME          READY   UP-TO-DATE   AVAILABLE   AGE
+alpaca-prod   3/3     3            3           20s
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ kubectl get services -o wide
+NAME         TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE    SELECTOR
+kubernetes   ClusterIP   10.92.0.1    <none>        443/TCP   124m   <none>
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ kubectl expose deployment alpaca-prod
+service/alpaca-prod exposed
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ kubectl get services -o wide                                                                                                                                                                        
+NAME          TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)    AGE    SELECTOR
+alpaca-prod   ClusterIP   10.92.3.106   <none>        8080/TCP   5s     app=alpaca,env=prod,ver=1
+kubernetes    ClusterIP   10.92.0.1     <none>        443/TCP    125m   <none>
+
+kubectl expose deployment alpaca-prod
+ALPACA_POD=$(kubectl get pods -l app=alpaca -o jsonpath='{.items[0].metadata.name}')
+kubectl port-forward $ALPACA_POD 48858:8080
+
+;; opcode: QUERY, status: NOERROR, id: 12071
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 0
+;; QUESTION SECTION:
+;alpaca-prod.default.svc.cluster.local. IN A
+;; ANSWER SECTION:
+alpaca-prod.default.svc.cluster.local. 30 IN A 10.115.245.13
+
+
+kubectl edit service alpaca-prod
+
+### regarding delete service and deployment
+
+# below command does not work even if I use right SELECTOR
+kubectl delete services,deployments -l app
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ kubectl delete services,deployments -l app=alpaca,env=prod,ver=1
+No resources found
+# below command works
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ kubectl delete deployments/alpaca-prod services/alpaca-prod
+deployment.apps "alpaca-prod" deleted
+service "alpaca-prod" deleted
+
+# after you delete services and deployments, the pods will be deleted automatically as well
+
+
+### command for http load balancing ingress
+
+# turns out below link expired...it is not up  to date
+kubectl apply -f https://j.hept.io/contour-deployment-rbac
+
+yy0513zqd@cloudshell:~ (deft-weaver-320113)$ kubectl apply -f https://j.hept.io/contour-deployment-rbac
+namespace/projectcontour created
+serviceaccount/contour created
+serviceaccount/envoy created
+configmap/contour created
+customresourcedefinition.apiextensions.k8s.io/extensionservices.projectcontour.io created
+customresourcedefinition.apiextensions.k8s.io/httpproxies.projectcontour.io created
+customresourcedefinition.apiextensions.k8s.io/tlscertificatedelegations.projectcontour.io created
+serviceaccount/contour-certgen created
+rolebinding.rbac.authorization.k8s.io/contour created
+role.rbac.authorization.k8s.io/contour-certgen created
+job.batch/contour-certgen-v1.16.0 created
+clusterrolebinding.rbac.authorization.k8s.io/contour created
+clusterrole.rbac.authorization.k8s.io/contour created
+service/contour created
+service/envoy created
+deployment.apps/contour created
+daemonset.apps/envoy created
+
+kubectl get -n projectcontour service contour -o wide
+
+# you will see this service is not type LoadBalancer
+
+# then I found the up to date link to use to deploy contour or ingress controller here
+
+https://github.com/projectcontour/contour/tree/v1.16.0/examples/contour
+
+Run kubectl apply -f https://projectcontour.io/quickstart/contour.yaml
+
+# then you need to edit service contour
+# change type to LoadBalancer
+
+kubectl edit service contour -n projectcontour
+service/contour edited
+
+# wait a bit you will see EXTERNAL IP eventually
+
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ kubectl get -n projectcontour service contour -o wide
+NAME      TYPE           CLUSTER-IP    EXTERNAL-IP      PORT(S)          AGE     SELECTOR
+contour   LoadBalancer   10.92.3.116   35.186.172.129   8001:30230/TCP   8m49s   app=contour
+
+# now deploy more pods
+kubectl apply -f create_deployment_ingress1.yaml
+kubectl apply -f create_deployment_ingress2.yaml
+kubectl apply -f create_deployment_ingress3.yaml
+
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ kubectl apply -f create_deployment_ingress2.yaml
+deployment.apps/alpaca created
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ kubectl apply -f create_deployment_ingress3.yaml
+deployment.apps/bandicoot created
+
+kubectl expose deployment alpaca
+kubectl expose deployment bandicoot
+kubectl expose deployment be-default
+
+
+kubectl apply -f simple-ingress.yaml
+
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ kubectl apply -f simple_ingress.yaml
+Warning: extensions/v1beta1 Ingress is deprecated in v1.14+, unavailable in v1.22+; use networking.k8s.io/v1 Ingress
+ingress.extensions/simple-ingress created
+
+
+# the notes in kubernetes up and running 2nd edition for ingress is outdated. almost nothing works so skip it
+
+## replicaset
+
+# Sometimes you may wonder if a Pod is being managed by a ReplicaSet, and if it is,
+# which ReplicaSet.
+# To enable this kind of discovery, the ReplicaSet controller adds an annotation to
+# every Pod that it creates. The key for the annotation is kubernetes.io/created-by. If
+# you run the following, look for the kubernetes.io/created-by entry in the annota‐
+# tions section:
+ 
+# well turns out below is a bit outdated as well. you cannot find annocations though
+# but you can see replicaset from the pod yaml
+kubectl get pods <pod-name> -o yaml
+
+# this is to scale up or down using imperative way. which is not encouraged.
+# below does NOT work (reason is you are using this command to deployment, should be on kind of replicaset)
+# kuard should be a replicaset
+kubectl scale replicasets kuard --replicas=4
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ kubectl scale replicasets alpaca-99799b966 --replicas=4
+replicaset.apps/alpaca-99799b966 scaled
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ kubectl get replicasets
+NAME                    DESIRED   CURRENT   READY   AGE
+alpaca-99799b966        3         3         3       5h23m
+bandicoot-5c68bc684b    3         3         3       5h23m
+be-default-575879b6f4   3         3         3       5h43m
+
+When a ReplicaSet is no longer required it can be deleted using the kubectl delete
+command. By default, this also deletes the Pods that are managed by the ReplicaSet:
+$ kubectl delete rs kuard
+replicaset "kuard" deleted
+Running the kubectl get pods command shows that all the kuard Pods created by
+the kuard ReplicaSet have also been deleted:
+$ kubectl get pods
+
+
+## notes about deployments
+# below create deployment not sure difference between this and apply though
+kubectl create -f kuard_deployment.yaml
+
+# below get this deployments selector.matchLabels
+kubectl get deployments kuard -o jsonpath --template {.spec.selector.matchLabels}
+
+# below try to get this deployments replicasets
+kubectl get replicasets --selector=run=kuard
+
+kubectl scale deployments kuard --replicas=2
+
+kubectl get deployments kuard --export -o yaml > kuard-deployment.yaml
+
+kubectl replace -f kuard-deployment.yaml --save-config
+
+# seems create is to initally create something, apply can apply any following changes to the yaml files
+kubectl apply -f kuard_deployment.yaml
+
+
+kubectl rollout status deployments kuard
+
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ kubectl apply -f kuard_deployment.yaml
+deployment.apps/kuard configured
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ kubectl rollout status deployments kuard
+deployment "kuard" successfully rolled out
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ kubectl get replicasets -o wide
+NAME               DESIRED   CURRENT   READY   AGE   CONTAINERS   IMAGES                               SELECTOR
+kuard-5b5c4bc6dd   0         0         0       30m   kuard        gcr.io/kuar-demo/kuard-amd64:blue    pod-template-hash=5b5c4bc6dd,run=kuard
+kuard-5bcf55975    3         3         3       30s   kuard        gcr.io/kuar-demo/kuard-amd64:green   pod-template-hash=5bcf55975,run=kuard
+
+kubectl rollout history deployment kuard
+
+# daemonset
+
+kubectl apply -f fluentd.yaml
+
+
+# jobs
+
+kubectl apply -f job-oneshot.yaml
+kubectl describe jobs oneshot
+kubectl logs oneshot-4kfdt
+
+
+kubectl run -i oneshot --image=gcr.io/kuar-demo/kuard-amd64:blue --restart=OnFailure -- --keygen-enable --keygen-exit-on-complete --keygen-num-to-gen 10
+
+QUEUE_POD=$(kubectl get pods -l app=work-queue,component=queue -o jsonpath='{.items[0].metadata.name}')
+
+kubectl port-forward $QUEUE_POD 8080:8080
+
+
+curl -X GET 10.88.2.34:8080/memq/server/stats
+# Create a work queue called 'keygen'
+curl -X PUT localhost:8080/memq/server/queues/keygen
+# Create 100 work items and load up the queue.
+for i in work-item-{0..99}; do
+ curl -X POST localhost:8080/memq/server/queues/keygen/enqueue \
+ -d "$i"
+done
+
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ kubectl apply -f job-consumers.yaml
+job.batch/consumers created
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ kubectl get pods
+NAME              READY   STATUS    RESTARTS   AGE
+consumers-2rn69   1/1     Running   0          4s
+consumers-4p4c2   1/1     Running   0          4s
+consumers-57pkv   1/1     Running   0          4s
+consumers-b5d78   1/1     Running   0          4s
+consumers-n4dwl   1/1     Running   0          4s
+queue-hzg9s       1/1     Running   0          70m
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ kubectl logs consumers-2rn69
+2021/07/22 18:27:39 Starting kuard version: v0.8.1-1
+2021/07/22 18:27:39 **********************************************************************
+2021/07/22 18:27:39 * WARNING: This server may expose sensitive
+2021/07/22 18:27:39 * and secret information. Be careful.
+2021/07/22 18:27:39 **********************************************************************
+2021/07/22 18:27:39 Config:
+{
+  "address": ":8080",
+  "debug": false,
+  "debug-sitedata-dir": "./sitedata",
+  "keygen": {
+    "enable": true,
+    "exit-code": 0,
+    "exit-on-complete": true,
+    "memq-queue": "keygen",
+    "memq-server": "http://queue:8080/memq/server",
+    "num-to-gen": 0,
+    "time-to-run": 0
+  },
+  "liveness": {
+    "fail-next": 0
+  },
+  "readiness": {
+    "fail-next": 0
+  },
+  "tls-address": ":8443",
+  "tls-dir": "/tls"
+}
+2021/07/22 18:27:39 Could not find certificates to serve TLS
+2021/07/22 18:27:39 Serving on HTTP on :8080
+2021/07/22 18:27:39 MemQ Worker starting
+2021/07/22 18:27:42 Item done: SHA256:BeZKURpMz7TKL6gOBSYDojB4QXoDnoYuin0Sw+/WxtU
+2021/07/22 18:27:43 Item done: SHA256:oDrlwW7VNXyP6ekZMWUadyUv1TIFfnJXovd+TdSZdBA
+2021/07/22 18:27:46 Item done: SHA256:6blLVfTgcsZDoO7PYTD8WYEZbExN8hQeIjvfe3K1y4A
+2021/07/22 18:27:49 Item done: SHA256:UVwbDqN0HMhS91xDizbZFzQGCI6vr+TyMDzQehRd3vQ
+2021/07/22 18:27:50 Item done: SHA256:Ef+iMh5Ox9B+ZB85BfZre5l9+4wkNY8JNeQ2uDDI6dE
+2021/07/22 18:27:51 Item done: SHA256:aJ0jO2FW7XFexE0/lkbH2VTySjvMN9OqRGIieqPz1Rk
+2021/07/22 18:27:53 Item done: SHA256:Gy9yFVlH47KAwwyAEhkD/vblHV2n/z7jV6dtlhFB+CY
+2021/07/22 18:27:55 Item done: SHA256:5NABd4TXzJdN9gcj7449qihidagmt2deLyH00s7qtW8
+2021/07/22 18:27:58 Item done: SHA256:zRghoDKI0iYs8xkcTeoAlcID+a23PsQ7k/V9p6O6+uE
+2021/07/22 18:28:00 Item done: SHA256:DxnPsvpqHXq3cWDkIeM7URR3KLfYM3BHYwTcoMNmlkw
+2021/07/22 18:28:01 Item done: SHA256:XYQzHWlFegtbWTVOrJtRrYEeWA6YcZhfb9ARoWAzqpY
+2021/07/22 18:28:02 Item done: SHA256:nAhMc7G/yV1fhkRMdlYD+iwiLPmOEgKCIx6na5esoRc
+2021/07/22 18:28:04 Item done: SHA256:j/yYEe/cnCcYzs2tE13P20jJX2iHQReRs/KvbH/MkSs
+2021/07/22 18:28:06 Item done: SHA256:wyHFG7PLm3l4SM7moqsDHv5uWS1iZymtp7II42MA6cc
+2021/07/22 18:28:09 Item done: SHA256:9SLZIVjcogLiC+DasVtE1kfPJaZMxYYvYCeYt1Et6Sg
+2021/07/22 18:28:11 Item done: SHA256:oSGUFQs+QbAXMuXLTNwxLAhkQjadlHAd6ypiC0Oz1r4
+2021/07/22 18:28:14 Item done: SHA256:Nhnm7uL3pDb7xVOUbQDgXt3cg/arQVisiSYPBANwlkc
+2021/07/22 18:28:16 Item done: SHA256:hJtwC6qK5gZQoZku6UTKdKoGd/vdEB7PJZvK44fxDgs
+2021/07/22 18:28:17 Item done: SHA256:uzZhD7MdRnh3IOP4d9++fEt0PgFz6sg6OYK5N7mOnOk
+2021/07/22 18:28:20 Item done: SHA256:R8KYH3XuWyi/p0LY3pxNPvzVkMzjvaoX22zes+wFmZc
+2021/07/22 18:28:21 Item done: SHA256:Gg1wkxxZmtlhhDqPotEI0u7umOAnZ3xxeMry9Hs0+54
+2021/07/22 18:28:24 Item done: SHA256:WlRh1wzOX4umsVVG43N3y0yxn6GDih+GzqdznaEHDxQ
+2021/07/22 18:28:26 Item done: SHA256:76d5XMQmcJ0sD0Z3yQInkjq9fpqBRoXkDqXTP/KMNoE
+2021/07/22 18:28:27 Item done: SHA256:GC2AntkvFDyB/yhQ+XfHKjbdCjHT8gihYdTLn+ZldIU
+2021/07/22 18:28:31 Item done: SHA256:p1JPQw6h5/k7hqH1G/bwuqfBDL0oHXPXgSKJPqQFPM8
+2021/07/22 18:28:33 Item done: SHA256:XtdGdBPx9k/meyH58pt3qlOqPg9hSELCmXj3IsyPa+Y
+2021/07/22 18:28:34 Item done: SHA256:p2YqOt5oEhL5ZtV6KiGaeWXjSI+qFaLyhEJ/W9K9tOI
+2021/07/22 18:28:36 Item done: SHA256:DErMPxHlGD/mlIZUbmEZduAtFCaSu2mVSIAI3JOnF+0
+2021/07/22 18:28:39 Item done: SHA256:wFPBMVi+CQMc2bPCrWn3nj6FO0fGnxKAuw/sBb5C6pI
+2021/07/22 18:28:45 Item done: SHA256:/Eu+BzzSc7yU9npV/vpGf1AF0+ws6J0yxsxTZE1XvVc
+
+
+## configmap
+
+# in the book example, it is found, after you launched the pod which consumes configmap, then if you update your configmap e.g. my-config
+# the pod's version will NOT be updated automatically
+# you will have to relaunch the pod using kubectl apply
+
+
+## secret
+
+below two commands to get two secrets from google 
+
+curl -o kuard.crt https://storage.googleapis.com/kuar-demo/kuard.crt
+
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ curl -o kuard.crt https://storage.googleapis.com/kuar-demo/kuard.crt
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100  1050  100  1050    0     0   5932      0 --:--:-- --:--:-- --:--:--  5898
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$  curl -o kuard.key https://storage.googleapis.com/kuar-demo/kuard.key
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100  1679  100  1679    0     0  11119      0 --:--:-- --:--:-- --:--:-- 11193
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ kubectl create secret generic kuard-tls \
+>  --from-file=kuard.crt \
+>  --from-file=kuard.key
+secret/kuard-tls created
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ kubectl describe secret kuard-tls
+Name:         kuard-tls
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Type:  Opaque
+
+Data
+====
+kuard.crt:  1050 bytes
+kuard.key:  1679 bytes
+
+
+
+
+## regarding admission controller
+# using example from devops kubernetes book, dynamic admission controller, validation webhook
+# the bible is basically this doc https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/
+# firstly we need to write an admission webhook server, then you can choose to deploy it outside of kubernetes 
+# or use deployment file to deploy it
+# https://github.com/zhoupoko2000/DevOps-with-Kubernetes-Second-Edition/blob/master/chapter5/5-3_admission-webhook/sample-validating-admission-webhook/deployment.yaml
+# then register with kubernetes using validatingwebhook or mutatingwebhook
+# for this webhook api server to run in kubernetes or standalone but be known by kubernetes, you need certificate
+# below is code to generate certificate
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ wget https://raw.githubusercontent.com/istio/istio/41203341818c4dada2ea5385cfedc7859c01e957/install/kubernetes/webhook-create-signed-cert.sh
+--2021-07-26 19:19:15--  https://raw.githubusercontent.com/istio/istio/41203341818c4dada2ea5385cfedc7859c01e957/install/kubernetes/webhook-create-signed-cert.sh
+Resolving raw.githubusercontent.com (raw.githubusercontent.com)... 185.199.109.133, 185.199.108.133, 185.199.111.133, ...
+Connecting to raw.githubusercontent.com (raw.githubusercontent.com)|185.199.109.133|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 3621 (3.5K) [text/plain]
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$eate-signed-cert.sh’]saved5[3621/3621]s    in 0s
+syy0513zqd@cloudshell:~ (deft-weaver-320113)$ sh webhook-create-signed-cert.sh --service sample-webhook-service-svc --secret sample-webhook-service-certs --namespace default
+creating certs in tmpdir /tmp/tmp.oP5JRA7yIU
+Generating RSA private key, 2048 bit long modulus (2 primes)
+........................................................................+++++
+.+++++
+e is 65537 (0x010001)
+Warning: certificates.k8s.io/v1beta1 CertificateSigningRequest is deprecated in v1.19+, unavailable in v1.22+; use certificates.k8s.io/v1 CertificateSigningRequest
+certificatesigningrequest.certificates.k8s.io/sample-webhook-service-svc.default created
+NAME                                 AGE   SIGNERNAME                     REQUESTOR              CONDITION
+sample-webhook-service-svc.default   0s    kubernetes.io/legacy-unknown   syy0513zqd@gmail.com   Pending
+certificatesigningrequest.certificates.k8s.io/sample-webhook-service-svc.default approved
+W0726 19:41:23.011221    6296 helpers.go:557] --dry-run is deprecated and can be replaced with --dry-run=client.
+secret/sample-webhook-service-certs created
+
+registry is devopswithkubernetes/samplewebhook-service:latest
+
+docker build -t $registry/$repository:$tag .
+
+Build an image from a Dockerfile
+syy0513zqd@cloudshell:~/DevOps-with-Kubernetes-Second-Edition/chapter5/5-3_admission-webhook/sample-validating-admission-webhook/src (deft-weaver-320113)$ docker build -t devopswithkubernetes/samplewebhook-service:latest .
+Sending build context to Docker daemon  12.29kB
+Step 1/7 : FROM node:9.11
+9.11: Pulling from library/node
+d660b1f15b9b: Pull complete
+46dde23c37b3: Pull complete
+6ebaeb074589: Pull complete
+e7428f935583: Pull complete
+eda527043444: Pull complete
+f3088daa8887: Pull complete
+1ded38ff7fdc: Pull complete
+da44c9274f48: Pull complete
+Digest: sha256:cddc729ef8326f7e8966c246ba2e87bad4c15365494ff3d681fa6f022cdab041
+Status: Downloaded newer image for node:9.11
+ ---> 08a8c8089ab1
+Step 2/7 : WORKDIR /usr/src/app
+ ---> Running in 2f43ea9cff0e
+Removing intermediate container 2f43ea9cff0e
+ ---> 13b916ba6ca3
+Step 3/7 : COPY package*.json ./
+ ---> a530ac126d3e
+Step 4/7 : RUN npm install
+ ---> Running in 1e366bc3921a
+npm notice created a lockfile as package-lock.json. You should commit this file.
+npm WARN app No description
+npm WARN app No repository field.
+npm WARN app No license field.
+
+added 50 packages in 1.696s
+Removing intermediate container 1e366bc3921a
+ ---> cf1eef296de2
+Step 5/7 : COPY . .
+ ---> c5cd9072152d
+Step 6/7 : EXPOSE 443
+ ---> Running in 6c2adca15ca1
+Removing intermediate container 6c2adca15ca1
+ ---> 132ba3bcfd17
+Step 7/7 : CMD [ "node", "app.js" ]
+ ---> Running in f7a36db09cfa
+Removing intermediate container f7a36db09cfa
+ ---> 08029eb255d7
+Successfully built 08029eb255d7
+Successfully tagged devopswithkubernetes/samplewebhook-service:latest
+syy0513zqd@cloudshell:~/DevOps-with-Kubernetes-Second-Edition/chapter5/5-3_admission-webhook/sample-validating-admission-webhook/src (deft-weaver-320113)$ ls
+app.js  Dockerfile  index.js  keys  package.json
+
+
+syy0513zqd@cloudshell:~$ kubectl apply -f validatingwebhookconfig.yaml
+validatingwebhookconfiguration.admissionregistration.k8s.io/sample-webhook-service configured
+
+=================================
+
+regarding devops kubernetes book page 293 regarding dynamic admission controller
+
+I followed this example.
+
+basically to set up webhook service the code is in below repository
+
+https://github.com/zhoupoko2000/DevOps-with-Kubernetes-Second-Edition/tree/master/chapter5/5-3_admission-webhook/sample-validating-admission-webhook/src
+
+follow the book to generate the certificate, then follow the book, put everything under src/keys
+
+then when you run docker build -t certain tag.....you need to make sure you read this 
+
+https://cloud.google.com/container-registry/docs/pushing-and-pulling
+
+basically enable container registry in your project
+
+then when tag it, put your google registry there
+
+docker build -t gcr.io/deft-weaver-320113/sample-webhook-service-test:latest .
+
+then locally, you can use 
+
+docker IMAGES
+then you can find all your images including this one
+
+334  docker images
+335  docker push gcr.io/deft-weaver-320113/sample-webhook-service-test:latest
+
+then in your sample-webhook-service deployment file, replace original image with this one.
+
+ONE IMPORTANT NOTE: at first I deployed using the dockerhub image which is not right as it does not contain correct certificates
+
+then when I redeploy with new image. it does NOT work.
+
+as I already created a service labelling that deployment's pod, and I already installed it in the cluster as validatingwebhookconfiguration.
+
+to make this redeploy work, I have to delete everything including sample-webhook-service, the service, and validatingwebhookconfiguration
+
+kubectl delete services sample-webhook-service-svc
+
+kubectl delete deployments sample-webhook-service
+
+kubectl delete -f validatingwebhookconfig.yaml
+
+ubectl get validatingwebhookconfiguration
+
+then 
+
+370  kubectl apply -f sample_webhook_service_deploy.yaml
+  371  kubectl get pods
+  372  kubectl apply -f sample_webhook_service_svc.yaml
+  373  kubectl get services
+  374  kubectl describe services sample-webhook-service-svc
+  375  kubectl get pods
+  376  kubectl apply -f validatingwebhookconfig.yaml
+  377  kubectl get pods
+
+
+the webhook service finally work, and installed on kubernetes
+
+then I have to deleted existing test deployment and redeploy that
+
+370  kubectl apply -f sample_webhook_service_deploy.yaml
+  371  kubectl get pods
+  372  kubectl apply -f sample_webhook_service_svc.yaml
+  373  kubectl get services
+  374  kubectl describe services sample-webhook-service-svc
+  375  kubectl get pods
+  376  kubectl apply -f validatingwebhookconfig.yaml
+  377  kubectl get pods
+
+if you see below error:
+
+or similiar ones saying you should have response.uid,,,,
+Error creating: Internal error occurred: failed calling webhook "devops.kubernetes.com": expected webhook response of admission.k8s.io/v1, Kind=AdmissionReview, got /, Kind=
+syy0513zqd@cloudshell:~$
+
+those errors all mean, your response does not follow kubernetes response format
+
+check this link, your response should always follow the correct format.
+https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/
+
+check response section
+
+so I have to change the book example code index.js , to make the webhook service work correctly
+
+
+
+
+

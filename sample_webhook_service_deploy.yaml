@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sample-webhook-service
+  labels:
+    app: sample-webhook-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sample-webhook-service
+  template:
+    metadata:
+      labels:
+        app: sample-webhook-service
+    spec:
+      containers:
+      - name: sample-webhook-service
+        image: gcr.io/deft-weaver-320113/sample-webhook-service-test:latest
+        imagePullPolicy: Always
