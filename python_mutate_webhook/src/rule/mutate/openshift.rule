@@ -1,6 +1,0 @@
-{% if request.object.metadata.annotations["ms.com/pki-trust-inject"] and request.object.metadata.annotations["ms.com/pki-trust-inject"]%}
-
-[
-    
-]
-
